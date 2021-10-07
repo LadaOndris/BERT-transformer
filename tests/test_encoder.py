@@ -3,7 +3,7 @@ from unittest import TestCase
 import numpy as np
 import torch
 
-from src.transformer.encoder import Dense, LayerNormalization, MultiHeadAttention, Relu
+from src.transformer.encoder import Dense, Embedding, LayerNormalization, MultiHeadAttention, Relu, TransformerEncoder
 
 
 class TestRelu(TestCase):
@@ -23,7 +23,7 @@ class TestDense(TestCase):
 
     def test_forward(self):
         d_model = 512
-        dense = Dense(d_model)
+        dense = Dense(d_model, d_model)
         shape = [16, 40, d_model]
         tensor = torch.ones(shape, dtype=torch.float32)
 
@@ -35,8 +35,9 @@ class TestDense(TestCase):
 class TestLayerNormalization(TestCase):
 
     def test_forward(self):
-        layer = LayerNormalization()
-        data = torch.from_numpy(np.arange(10, dtype=np.float32).reshape(5, 2) * 10)
+        n_features = 2
+        layer = LayerNormalization(n_features)
+        data = torch.from_numpy(np.arange(10, dtype=np.float32).reshape(-1, n_features) * 10)
         expected_output_np = np.array([-1, 1], dtype=np.float32)
         expected_output_np = np.broadcast_to(expected_output_np, data.shape)
         expected_output = torch.from_numpy(expected_output_np)
@@ -50,7 +51,8 @@ class TestMultiHeadAttention(TestCase):
 
     def test_forward(self):
         mha = MultiHeadAttention(d_model=512, num_heads=8)
-        y = torch.from_numpy(np.random.rand(*[1, 60, 512]))  # (batch_size, encoder_sequence, d_model)
+        y_np = np.random.rand(*[1, 60, 512]).astype(np.float32)
+        y = torch.from_numpy(y_np)  # (batch_size, encoder_sequence, d_model)
         out, attn = mha(y, y, y)
 
         expected_out_shape = [1, 60, 512]
@@ -59,3 +61,30 @@ class TestMultiHeadAttention(TestCase):
 
         torch.testing.assert_allclose(out.shape, expected_out_shape)
         torch.testing.assert_allclose(attn.shape, expected_attn_shape)
+
+
+class TestEmbedding(TestCase):
+
+    def test_forward(self):
+        vocab_size = 1000
+        d_model = 10
+        embedding_layer = Embedding(vocab_size, d_model)
+        x = torch.from_numpy(np.random.uniform(0, vocab_size, size=(32, 80)).astype(np.int64))
+
+        embeddings = embedding_layer(x)
+
+        torch.testing.assert_equal(embeddings.shape, [32, 80, d_model])
+
+
+class TestTransformerEncoder(TestCase):
+
+    def test_forward(self):
+        batch_size = 32
+        seq_len = 80
+        d_model = 512
+        encoder = TransformerEncoder(num_layers=1, d_model=d_model, num_heads=4, d_ff=128,
+                                     input_vocab_size=5000, max_position_encoding=10000)
+        input = torch.from_numpy(np.random.uniform(0, 5000, size=(batch_size, seq_len)).astype(np.int64))
+        output = encoder(input)
+
+        torch.testing.assert_equal(output.shape, [batch_size, seq_len, d_model])

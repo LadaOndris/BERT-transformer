@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from src.transformer.operations import softmax, positional_encoding
+from src.transformer.operations import positional_encoding, softmax
 
 
 class TransformerEncoder(nn.Module):
@@ -13,20 +13,34 @@ class TransformerEncoder(nn.Module):
 
         self.embedding = Embedding(input_vocab_size, d_model)
         self.positional_encoding = positional_encoding(max_position_encoding, d_model)
-
-        self.encoder_layers = [EncoderLayer(d_model, num_heads, d_ff)
-                               for _ in range(num_layers)]
+        self.encoder_layers = nn.ModuleList([EncoderLayer(d_model, num_heads, d_ff)
+                                             for _ in range(num_layers)])
 
     def forward(self, x):
         seq_len = x.shape[1]
 
-        x = self.embedding(x)
-        x += self.positional_encoding[:, :seq_len, :]
+        x = self.embedding(x)  # (batch_size, seq_len, d_model)
+        x += self.positional_encoding[:, :seq_len, :]  # (batch_size, seq_len, d_model)
 
         for i in range(self.num_layers):
             x = self.encoder_layers[i](x)
         return x
 
+
+class Embedding(nn.Module):
+
+    def __init__(self, input_dim, output_dim):
+        super(Embedding, self).__init__()
+        self.output_dim = output_dim
+        self.weights = nn.Parameter(torch.zeros([input_dim, output_dim]))
+        torch.nn.init.xavier_normal_(self.weights)
+
+    def forward(self, x):
+        x_flattened = x.flatten()
+        embeddings = torch.index_select(self.weights, dim=0, index=x_flattened)
+        embeddings_out_shape = list(x.shape) + [self.output_dim]
+        embeddings_reshaped = embeddings.reshape(embeddings_out_shape)
+        return embeddings_reshaped
 
 
 class EncoderLayer(nn.Module):
@@ -48,8 +62,8 @@ class EncoderLayer(nn.Module):
         self.ffn_norm = LayerNormalization(d_model)
 
     def forward(self, x):
-        attention_out = self.mha(x, x, x)  # (batch_size, seq_len, d_model)
-        attention_norm = self.mha_norm(x + attention_out)  # (batch_size, seq_len, d_model)
+        attention, attention_weights = self.mha(x, x, x)  # (batch_size, seq_len, d_model)
+        attention_norm = self.mha_norm(x + attention)  # (batch_size, seq_len, d_model)
 
         ffn_out = self.ffn(attention_norm)  # (batch_size, seq_len, d_model)
         ffn_norm = self.ffn_norm(attention_norm + ffn_out)  # (batch_size, seq_len, d_model)
@@ -65,10 +79,10 @@ class MultiHeadAttention(nn.Module):
         self.num_heads = num_heads
         self.depth = d_model // num_heads
 
-        self.w_q = Dense(d_model)
-        self.w_k = Dense(d_model)
-        self.w_v = Dense(d_model)
-        self.w_o = Dense(d_model)
+        self.w_q = Dense(d_model, d_model)
+        self.w_k = Dense(d_model, d_model)
+        self.w_v = Dense(d_model, d_model)
+        self.w_o = Dense(d_model, d_model)
 
         self.sdpa = ScaledDotProductAttention()
 
@@ -125,36 +139,35 @@ class ScaledDotProductAttention(nn.Module):
 
 
 class PointWiseFeedForward(nn.Module):
+
     def __init__(self, d_model: int, d_ff: int):
         super(PointWiseFeedForward, self).__init__()
 
-        self.dense1 = Dense(d_ff, activation='relu')
-        self.dense2 = Dense(d_model)
+        self.dense1 = Dense(d_model, d_ff)
+        self.activation = Relu()
+        self.dense2 = Dense(d_ff, d_model)
 
     def forward(self, x):
         out1 = self.dense1(x)  # (batch_size, seq_len, d_ff)
-        out2 = self.dense2(out1)  # (batch_size, seq_len, d_model)
+        activation_out = self.activation(out1)
+        out2 = self.dense2(activation_out)  # (batch_size, seq_len, d_model)
         return out2
 
 
 class Dense(nn.Module):
 
-    def __init__(self, hidden_dim: int, activation: str = None):
+    def __init__(self, input_dim, hidden_dim: int):
         super(Dense, self).__init__()
+        self.input_dim = input_dim
         self.hidden_dim = hidden_dim
-        if activation == 'relu':
-            self.activation = Relu()
-        else:
-            self.activation = None
 
-        # TODO: weights and biases intitializer
-        self.weights = nn.Parameter(torch.ones([hidden_dim]))
-        self.biases = nn.Parameter(torch.ones([hidden_dim]))
+        self.weights = nn.Parameter(torch.zeros([input_dim, hidden_dim]))
+        self.biases = nn.Parameter(torch.zeros([hidden_dim]))
+
+        torch.nn.init.xavier_uniform_(self.weights)
 
     def forward(self, x):
-        a = x * self.weights + self.biases
-        if self.activation is not None:
-            return self.activation(a)
+        a = torch.matmul(x, self.weights) + self.biases
         return a
 
 
