@@ -1,0 +1,15 @@
+{
+  "train": {
+    "batch_size": 64,
+    "epochs": 100,
+    "learning_rate": 5
+
+  },
+  "transformer": {
+    "num_layers": 4,
+    "num_heads": 4,
+    "dim_model": 256,
+    "dim_ff": 512,
+    "max_position_encoding": 10000
+  }
+}

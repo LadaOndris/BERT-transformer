@@ -52,7 +52,6 @@ class DataLoaderPreprocessor:
 
         self.num_class = len(set([label for (label, text) in train_dataset]))
         self.vocab_size = len(self.vocab)
-        self.emsize = 64
 
     def text_pipeline(self, x):
         return self.vocab(self.tokenizer(x))
