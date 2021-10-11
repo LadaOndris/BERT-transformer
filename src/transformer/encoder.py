@@ -1,3 +1,5 @@
+import math
+
 import torch
 from torch import nn
 
@@ -16,14 +18,14 @@ class TransformerEncoder(nn.Module):
         self.encoder_layers = nn.ModuleList([EncoderLayer(d_model, num_heads, d_ff)
                                              for _ in range(num_layers)])
 
-    def forward(self, x):
+    def forward(self, x, mask):
         seq_len = x.shape[1]
 
         x = self.embedding(x)  # (batch_size, seq_len, d_model)
         x += self.positional_encoding[:, :seq_len, :]  # (batch_size, seq_len, d_model)
 
         for i in range(self.num_layers):
-            x = self.encoder_layers[i](x)
+            x = self.encoder_layers[i](x, mask)
         return x
 
 
@@ -61,8 +63,8 @@ class EncoderLayer(nn.Module):
         self.mha_norm = LayerNormalization(d_model)
         self.ffn_norm = LayerNormalization(d_model)
 
-    def forward(self, x):
-        attention, attention_weights = self.mha(x, x, x)  # (batch_size, seq_len, d_model)
+    def forward(self, x, mask):
+        attention, attention_weights = self.mha(x, x, x, mask)  # (batch_size, seq_len, d_model)
         attention_norm = self.mha_norm(x + attention)  # (batch_size, seq_len, d_model)
 
         ffn_out = self.ffn(attention_norm)  # (batch_size, seq_len, d_model)
@@ -86,7 +88,7 @@ class MultiHeadAttention(nn.Module):
 
         self.sdpa = ScaledDotProductAttention()
 
-    def forward(self, query, key, value):
+    def forward(self, query, key, value, mask):
         n_batches = query.shape[0]
 
         q = self.w_q(query)  # (batch_size, seq_len, d_model)
@@ -99,7 +101,7 @@ class MultiHeadAttention(nn.Module):
 
         # scaled_attention.shape == (batch_size, num_heads, seq_len_q, depth)
         # attention_weights.shape == (batch_size, num_heads, seq_len_q, seq_len_k)
-        scaled_attention, attention_weights = self.sdpa(q, k, v)
+        scaled_attention, attention_weights = self.sdpa(q, k, v, mask)
 
         scaled_attention = scaled_attention.transpose(1, 2).contiguous()  # (batch_size, seq_len_q, num_heads, depth)
         # 'Concatenation'
@@ -118,7 +120,7 @@ class ScaledDotProductAttention(nn.Module):
     def __init__(self):
         super(ScaledDotProductAttention, self).__init__()
 
-    def forward(self, queries, keys, values):
+    def forward(self, queries, keys, values, mask):
         """
         Keys and values should have the same length: seq_len_k == seq_len_v.
 
@@ -128,8 +130,14 @@ class ScaledDotProductAttention(nn.Module):
         :return:    shape = (..., seq_len_q, seq_len_k)
         """
         matmul_qk = torch.matmul(queries, keys.transpose(-2, -1))  # (..., seq_len_q, seq_len_k)
-        d_k = keys.size()[-1]
-        scaled_attention = torch.divide(matmul_qk, d_k)
+        d_k = keys.size(-1)
+        scaled_attention = torch.divide(matmul_qk, math.sqrt(d_k))
+
+        if mask is not None:
+            # Adding a large negative number results
+            # in a 0 in the softmax function, thus
+            # ignoring padding in the batch.
+            scaled_attention += (mask * -1e9)
 
         attention_weights = softmax(scaled_attention)
 

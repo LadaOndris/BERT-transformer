@@ -23,3 +23,16 @@ def positional_encoding(max_position_encoding, d_model):
     encoding = angles[np.newaxis, ...]  # (1, max_position_encoding, d_model)
 
     return torch.from_numpy(encoding)
+
+
+def create_padding_mask(x):
+    """
+    Creates a mask to denote padding locations.
+    The mask contains value 1.0 if the value in the given
+    sequence is zero. Other values are set to 0.
+
+    :param x: A sequence of shape (batch_size, seq_len)
+    :return: A padding mask of shape (batch_size, 1, 1, seq_len)
+    """
+    mask = (x == 0.).type(x.dtype)
+    return mask[:, None, None, :]

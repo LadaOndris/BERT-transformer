@@ -4,6 +4,7 @@ import numpy as np
 import torch
 
 from src.transformer.encoder import Dense, Embedding, LayerNormalization, MultiHeadAttention, Relu, TransformerEncoder
+from src.transformer.operations import create_padding_mask
 
 
 class TestRelu(TestCase):
@@ -53,7 +54,7 @@ class TestMultiHeadAttention(TestCase):
         mha = MultiHeadAttention(d_model=512, num_heads=8)
         y_np = np.random.rand(*[1, 60, 512]).astype(np.float32)
         y = torch.from_numpy(y_np)  # (batch_size, encoder_sequence, d_model)
-        out, attn = mha(y, y, y)
+        out, attn = mha(y, y, y, mask=None)
 
         expected_out_shape = [1, 60, 512]
         # The attentions between each word pair for each head
@@ -85,6 +86,7 @@ class TestTransformerEncoder(TestCase):
         encoder = TransformerEncoder(num_layers=1, d_model=d_model, num_heads=4, d_ff=128,
                                      input_vocab_size=5000, max_position_encoding=10000)
         input = torch.from_numpy(np.random.uniform(0, 5000, size=(batch_size, seq_len)).astype(np.int64))
-        output = encoder(input)
+        mask = create_padding_mask(input)
+        output = encoder(input, mask)
 
         torch.testing.assert_equal(output.shape, [batch_size, seq_len, d_model])
