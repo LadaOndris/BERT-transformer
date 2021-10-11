@@ -2,8 +2,9 @@
   "train": {
     "batch_size": 64,
     "epochs": 100,
-    "learning_rate": 5
-
+    "warmup_steps": 10000,
+    "learning_rate": 5,
+    "lr_coeff": 1.0
   },
   "transformer": {
     "num_layers": 4,

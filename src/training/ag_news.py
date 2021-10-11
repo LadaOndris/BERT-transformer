@@ -5,6 +5,7 @@ import torch
 from torchinfo import summary
 
 from src.training.data_loader import DataLoaderPreprocessor
+from src.training.optimizer import NoamOptimizer
 from src.transformer.encoder import TransformerEncoder
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -54,8 +55,8 @@ def run_epoch(data_iter, model, loss_compute, log_interval=100):
         epoch_total_acc += acc
 
         if batch_idx % log_interval == 1:
-            print("Epoch step: {:5d} Loss: %f Accuracy: {:8.3f}" %
-                  (batch_idx, loss / batch.ntokens, step_acc / step_count))
+            print("Epoch step: {:5d} Loss: {:5.3f} Accuracy: {:8.3f}",
+                  batch_idx, loss / batch.ntokens, step_acc / step_count)
             step_acc, step_count, tokens = 0, 0, 0
 
     epoch_acc = epoch_total_acc / epoch_batches
@@ -65,10 +66,13 @@ def run_epoch(data_iter, model, loss_compute, log_interval=100):
 
 def train(num_epochs, train_iter, valid_iter):
     criterion = torch.nn.CrossEntropyLoss()
+    # TODO: Implement NoamOptimizer as a LR schedular!
     optimizer = NoamOptimizer(
-        torch.optim.SGD(model.parameters(), lr=config['train']['learning_rate'])
+        d_model=config['transformer']['dim_model'],
+        warmup_steps=config['train']['warmup_steps'],
+        optimizer=torch.optim.Adam(model.parameters(), lr=config['train']['learning_rate']),
+        lr_coeff=config['train']['lr_coeff']
     )
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1)
     epoch_start_time = time.time()
 
     for epoch in range(num_epochs):
