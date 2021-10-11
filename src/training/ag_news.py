@@ -6,7 +6,7 @@ from torchinfo import summary
 
 from src.training.data_loader import DataLoaderPreprocessor
 from src.training.optimizer import NoamOptimizer
-from src.transformer.encoder import TransformerEncoder
+from src.transformer.classifier import TransformerClassifier
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -21,42 +21,39 @@ class SingleGPULossCompute:
         self.criterion = criterion
         self.optimizer = optimizer
 
-    def __call__(self, x, y, norm):
-        x = self.model(x)
-        loss = self.criterion(x.contiguous().view(-1, x.size(-1)),
-                              y.contiguous().view(-1)) / norm
+    def __call__(self, x, y):
+        loss = self.criterion(x, y)
         loss.backward()
         if self.optimizer is not None:
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
             self.optimizer.step()
             self.optimizer.optimizer.zero_grad()
-        return loss.data[0] * norm
+        return loss.data
 
 
 def run_epoch(data_iter, model, loss_compute, log_interval=100):
-    total_tokens = 0
     total_loss = 0
-    tokens = 0
     step_acc = 0
     step_count = 0
     epoch_total_acc = 0
     epoch_batches = 0
 
     for batch_idx, batch in enumerate(data_iter):
-        predicted_labels = model.forward(batch.src, batch.trg, batch.src_mask, batch.trg_mask)
-        loss = loss_compute(predicted_labels, batch.trg_y, batch.ntokens)
+        labels, sequences, pad_masks = batch
+        batch_size = sequences.size(0)
+
+        predicted_labels = model.forward(sequences, pad_masks)
+        loss = loss_compute(predicted_labels, labels)
         total_loss += loss
-        total_tokens += batch.ntokens
-        tokens += batch.ntokens
-        acc = (predicted_labels.argmax(1) == batch.labels).sum().item()
+        acc = torch.sum(predicted_labels.argmax(1) == labels).item()
         step_acc += acc
-        step_count += batch.labels.size(0)
+        step_count += batch_size
         epoch_batches += 1
         epoch_total_acc += acc
 
         if batch_idx % log_interval == 1:
-            print("Epoch step: {:5d} Loss: {:5.3f} Accuracy: {:8.3f}",
-                  batch_idx, loss / batch.ntokens, step_acc / step_count)
+            print("Epoch step: {:5d}/{:5d} Loss: {:5.3f} Accuracy: {:8.3f}".format(
+                batch_idx + 1, int(len(data_iter) / batch_size), loss / batch_size, step_acc / step_count))
             step_acc, step_count, tokens = 0, 0, 0
 
     epoch_acc = epoch_total_acc / epoch_batches
@@ -104,13 +101,9 @@ def train(num_epochs, train_iter, valid_iter):
 
 with open('./src/config.json', 'r') as config_file:
     config = json.load(config_file)
-conf_trans = config['transformer']
 
 data_preprocessor = DataLoaderPreprocessor(batch_size=config['train']['batch_size'], shuffle=True)
-model = TransformerEncoder(num_layers=conf_trans['num_layers'], num_heads=conf_trans['num_heads'],
-                           d_model=conf_trans['dim_model'], d_ff=conf_trans['dim_ff'],
-                           input_vocab_size=data_preprocessor.vocab_size,
-                           max_position_encoding=conf_trans['max_position_encoding']).to(device)
+model = TransformerClassifier(config, data_preprocessor.num_class, data_preprocessor.vocab_size).to(device)
 summary(model)
 train_dataloader = data_preprocessor.get_train_data_loader()
 valid_dataloader = data_preprocessor.get_valid_data_loader()

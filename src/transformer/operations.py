@@ -4,7 +4,7 @@ import torch
 
 def softmax(tensor: torch.Tensor, dim=-1):
     max_values, indices = torch.max(tensor, dim=dim, keepdim=True)
-    exp = torch.exp(tensor - max_values[0])
+    exp = torch.exp(tensor - max_values)
     exp_sum = torch.sum(exp, dim=dim, keepdim=True)
     return torch.divide(exp, exp_sum)
 

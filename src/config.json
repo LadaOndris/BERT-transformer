@@ -2,7 +2,7 @@
   "train": {
     "batch_size": 64,
     "epochs": 100,
-    "warmup_steps": 10000,
+    "warmup_steps": 4000,
     "learning_rate": 5,
     "lr_coeff": 1.0
   },
