@@ -3,7 +3,7 @@ from unittest import TestCase
 import numpy as np
 import torch
 
-from src.transformer.encoder import Dense, Embedding, LayerNormalization, MultiHeadAttention, Relu, TransformerEncoder
+from src.transformer.modules import Dense, Embedding, LayerNormalization, MultiHeadAttention, Relu, TransformerEncoder
 from src.transformer.operations import create_padding_mask
 
 

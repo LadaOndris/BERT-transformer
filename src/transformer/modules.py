@@ -2,30 +2,23 @@ import math
 
 import torch
 from torch import nn
+from torch.nn import Dropout
 
-from src.transformer.operations import positional_encoding, softmax
+from src.transformer.operations import softmax
 
 
 class TransformerEncoder(nn.Module):
 
-    def __init__(self, num_layers: int, d_model: int, num_heads: int, d_ff: int, input_vocab_size: int,
-                 max_position_encoding: int):
+    def __init__(self, num_layers: int, d_model: int, num_heads: int, d_ff: int):
         super(TransformerEncoder, self).__init__()
         self.num_layers = num_layers
 
-        self.embedding = Embedding(input_vocab_size, d_model)
-        self.positional_encoding = positional_encoding(max_position_encoding, d_model)
-        self.encoder_layers = nn.ModuleList([EncoderLayer(d_model, num_heads, d_ff)
-                                             for _ in range(num_layers)])
+        self.layers = nn.ModuleList([EncoderLayer(d_model, num_heads, d_ff)
+                                     for _ in range(num_layers)])
 
     def forward(self, x, mask):
-        seq_len = x.shape[1]
-
-        x = self.embedding(x)  # (batch_size, seq_len, d_model)
-        x += self.positional_encoding[:, :seq_len, :]  # (batch_size, seq_len, d_model)
-
         for i in range(self.num_layers):
-            x = self.encoder_layers[i](x, mask)
+            x = self.layers[i](x, mask)
         return x
 
 
@@ -34,12 +27,12 @@ class Embedding(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(Embedding, self).__init__()
         self.output_dim = output_dim
-        self.weights = nn.Parameter(torch.zeros([input_dim, output_dim]))
-        torch.nn.init.xavier_normal_(self.weights)
+        self.weight = nn.Parameter(torch.zeros([input_dim, output_dim]))
+        torch.nn.init.xavier_normal_(self.weight)
 
     def forward(self, x):
         x_flattened = x.flatten()
-        embeddings = torch.index_select(self.weights, dim=0, index=x_flattened)
+        embeddings = torch.index_select(self.weight, dim=0, index=x_flattened)
         embeddings_out_shape = list(x.shape) + [self.output_dim]
         embeddings_reshaped = embeddings.reshape(embeddings_out_shape)
         return embeddings_reshaped
@@ -58,42 +51,49 @@ class EncoderLayer(nn.Module):
         super(EncoderLayer, self).__init__()
         self.d_model = d_model
 
-        self.mha = MultiHeadAttention(d_model, num_heads)
-        self.ffn = PointWiseFeedForward(d_model, d_ff)
-        self.mha_norm = LayerNormalization(d_model)
-        self.ffn_norm = LayerNormalization(d_model)
+        self.attention = BertAttention(d_model, num_heads)
+        self.intermediate = BertIntermediate(d_model, d_ff)
+        self.output = BertOutput(d_ff, d_model)
 
     def forward(self, x, mask):
-        attention, attention_weights = self.mha(x, x, x, mask)  # (batch_size, seq_len, d_model)
-        attention_norm = self.mha_norm(x + attention)  # (batch_size, seq_len, d_model)
-
-        ffn_out = self.ffn(attention_norm)  # (batch_size, seq_len, d_model)
-        ffn_norm = self.ffn_norm(attention_norm + ffn_out)  # (batch_size, seq_len, d_model)
-
-        return ffn_norm
+        attention = self.attention(x, x, x, mask)  # (batch_size, seq_len, d_model)
+        intermediate = self.intermediate(attention)  # (batch_size, seq_len, d_model)
+        output = self.output(intermediate, attention)
+        return output
 
 
-class MultiHeadAttention(nn.Module):
+class BertAttention(nn.Module):
+    def __init__(self, d_model: int, num_heads: int):
+        super(BertAttention, self).__init__()
+
+        self.self = BertSelfAttention(d_model, num_heads)
+        self.output = BertOutput(d_model, d_model)
+
+    def forward(self, query, key, value, mask):
+        residual = query
+        scaled_attention = self.self(query, key, value, mask)
+        output =  self.output(scaled_attention, residual)
+        return output
+
+class BertSelfAttention(nn.Module):
 
     def __init__(self, d_model: int, num_heads: int):
-        super(MultiHeadAttention, self).__init__()
+        super(BertSelfAttention, self).__init__()
         self.d_model = d_model
         self.num_heads = num_heads
         self.depth = d_model // num_heads
 
-        self.w_q = Dense(d_model, d_model)
-        self.w_k = Dense(d_model, d_model)
-        self.w_v = Dense(d_model, d_model)
-        self.w_o = Dense(d_model, d_model)
-
-        self.sdpa = ScaledDotProductAttention()
+        self.query = Dense(d_model, d_model)
+        self.key = Dense(d_model, d_model)
+        self.value = Dense(d_model, d_model)
+        self.dropout = Dropout(p=0.1)
 
     def forward(self, query, key, value, mask):
         n_batches = query.shape[0]
 
-        q = self.w_q(query)  # (batch_size, seq_len, d_model)
-        k = self.w_k(key)  # (batch_size, seq_len, d_model)
-        v = self.w_v(value)  # (batch_size, seq_len, d_model)
+        q = self.query(query)  # (batch_size, seq_len, d_model)
+        k = self.key(key)  # (batch_size, seq_len, d_model)
+        v = self.value(value)  # (batch_size, seq_len, d_model)
 
         q = self._split(q, n_batches)  # (batch_size, num_heads, seq_len_q, depth)
         k = self._split(k, n_batches)
@@ -107,28 +107,17 @@ class MultiHeadAttention(nn.Module):
         # 'Concatenation'
         scaled_attention = scaled_attention.view(n_batches, -1, self.d_model)  # (batch_size, seq_len, d_model)
 
-        output = self.w_o(scaled_attention)  # (batch_size, seq_len, d_model)
+        return scaled_attention
 
-        return output, attention_weights
-
-    def _split(self, x, n_batches):
-        return x.view(n_batches, -1, self.num_heads, self.depth).transpose(1, 2)
-
-
-class ScaledDotProductAttention(nn.Module):
-
-    def __init__(self):
-        super(ScaledDotProductAttention, self).__init__()
-
-    def forward(self, queries, keys, values, mask):
+    def sdpa(self, queries, keys, values, mask):
         """
-        Keys and values should have the same length: seq_len_k == seq_len_v.
+                Keys and values should have the same length: seq_len_k == seq_len_v.
 
-        :param queries: shape = (..., seq_len_q, d_k)
-        :param keys:    shape = (..., seq_len_k, d_k)
-        :param values:  shape = (..., seq_len_v, d_v)
-        :return:    shape = (..., seq_len_q, seq_len_k)
-        """
+                :param queries: shape = (..., seq_len_q, d_k)
+                :param keys:    shape = (..., seq_len_k, d_k)
+                :param values:  shape = (..., seq_len_v, d_v)
+                :return:    shape = (..., seq_len_q, seq_len_k)
+                """
         matmul_qk = torch.matmul(queries, keys.transpose(-2, -1))  # (..., seq_len_q, seq_len_k)
         d_k = keys.size(-1)
         scaled_attention = torch.divide(matmul_qk, math.sqrt(d_k))
@@ -145,21 +134,35 @@ class ScaledDotProductAttention(nn.Module):
 
         return output, attention_weights
 
+    def _split(self, x, n_batches):
+        return x.view(n_batches, -1, self.num_heads, self.depth).transpose(1, 2)
 
-class PointWiseFeedForward(nn.Module):
+
+class BertOutput(nn.Module):
+
+    def __init__(self, in_features: int, out_features: int):
+        super(BertOutput, self).__init__()
+
+        self.dense = Dense(in_features, out_features)
+        self.LayerNorm = LayerNormalization(out_features)
+        self.dropout = Dropout(p=0.1)
+
+    def forward(self, x, residual):
+        return self.LayerNorm(residual + self.dense(x))
+
+
+class BertIntermediate(nn.Module):
 
     def __init__(self, d_model: int, d_ff: int):
-        super(PointWiseFeedForward, self).__init__()
+        super(BertIntermediate, self).__init__()
 
-        self.dense1 = Dense(d_model, d_ff)
+        self.dense = Dense(d_model, d_ff)
         self.activation = Relu()
-        self.dense2 = Dense(d_ff, d_model)
 
     def forward(self, x):
-        out1 = self.dense1(x)  # (batch_size, seq_len, d_ff)
+        out1 = self.dense(x)  # (batch_size, seq_len, d_ff)
         activation_out = self.activation(out1)
-        out2 = self.dense2(activation_out)  # (batch_size, seq_len, d_model)
-        return out2
+        return activation_out
 
 
 class Dense(nn.Module):
@@ -169,13 +172,13 @@ class Dense(nn.Module):
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
 
-        self.weights = nn.Parameter(torch.zeros([input_dim, hidden_dim]))
-        self.biases = nn.Parameter(torch.zeros([hidden_dim]))
+        self.weight = nn.Parameter(torch.zeros([hidden_dim, input_dim]))
+        self.bias = nn.Parameter(torch.zeros([hidden_dim]))
 
-        torch.nn.init.xavier_uniform_(self.weights)
+        torch.nn.init.xavier_uniform_(self.weight)
 
     def forward(self, x):
-        a = torch.matmul(x, self.weights) + self.biases
+        a = torch.matmul(x, torch.permute(self.weight, [1, 0])) + self.bias
         return a
 
 
@@ -189,8 +192,8 @@ class LayerNormalization(nn.Module):
         self.axis = axis
         self.epsilon = epsilon
 
-        self.gamma = nn.Parameter(torch.ones(features))
-        self.beta = nn.Parameter(torch.zeros(features))
+        self.weight = nn.Parameter(torch.ones(features))
+        self.bias = nn.Parameter(torch.zeros(features))
 
     def forward(self, x):
         dim_size = x.size()[self.axis]
@@ -203,7 +206,7 @@ class LayerNormalization(nn.Module):
 
         x_normalized = torch.divide(x - mean_dim, torch.sqrt(var_dim + self.epsilon))
 
-        return self.gamma * x_normalized + self.beta
+        return self.weight * x_normalized + self.bias
 
 
 class Relu(nn.Module):

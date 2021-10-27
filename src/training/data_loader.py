@@ -3,7 +3,6 @@ from pprint import pprint
 from typing import Collection, Iterator
 
 import torch
-from torch.nn.functional import one_hot
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Sampler
 from torch.utils.data.dataset import random_split
@@ -49,11 +48,24 @@ class BucketSampler(Sampler[int]):
         return len(self.data_source)
 
 
+class Vocab:
+
+    def __init__(self, train_dataset):
+        self.tokenizer = get_tokenizer('basic-english')
+        self.vocab = build_vocab_from_iterator(self.yield_tokens(train_dataset), specials=["<unk>"])
+        self.vocab.set_default_index(self.vocab["<unk>"])
+
+    def yield_tokens(self, data_iter):
+        for _, text in data_iter:
+            yield self.tokenizer(text)
+
+
 class DataLoaderPreprocessor:
 
-    def __init__(self, batch_size, shuffle):
+    def __init__(self, batch_size, shuffle, tokenizer):
         self.batch_size = batch_size
         self.shuffle = shuffle
+        self.tokenizer = tokenizer
 
         train_iter, test_iter = AG_NEWS()
         train_dataset = to_map_style_dataset(train_iter)
@@ -61,35 +73,30 @@ class DataLoaderPreprocessor:
         num_train = int(len(train_dataset) * 0.95)
         self.split_train_, self.split_valid_ = \
             random_split(train_dataset, [num_train, len(train_dataset) - num_train])
-
-        self.tokenizer = get_tokenizer('basic_english')
-        self.vocab = build_vocab_from_iterator(self.yield_tokens(train_dataset), specials=["<unk>"])
-        self.vocab.set_default_index(self.vocab["<unk>"])
-
         self.num_class = len(set([label for (label, text) in train_dataset]))
-        self.vocab_size = len(self.vocab)
 
     def text_pipeline(self, x):
-        return self.vocab(self.tokenizer(x))
+        tokenized_text = self.tokenizer(x)
+        return tokenized_text['input_ids'], tokenized_text['token_type_ids']
 
     def label_pipeline(self, x):
         return int(x) - 1
 
-    def yield_tokens(self, data_iter):
-        for _, text in data_iter:
-            yield self.tokenizer(text)
-
     def collate_batch(self, batch):
-        label_list, text_list, offsets = [], [], [0]
+        label_list, text_list, segment_list, offsets = [], [], [], [0]
         for (_label, _text) in batch:
             label_list.append(self.label_pipeline(_label))
-            processed_text = torch.tensor(self.text_pipeline(_text), dtype=torch.int64)
-            text_list.append(processed_text)
-            offsets.append(processed_text.size(0))
+            input_ids, token_type_ids = self.text_pipeline(_text)
+            text_ids = torch.tensor(input_ids, dtype=torch.int64)
+            segment_ids = torch.tensor(token_type_ids, dtype=torch.int64)
+            text_list.append(text_ids)
+            segment_list.append(segment_ids)
+            offsets.append(text_ids.size(0))
         labels = torch.tensor(label_list, dtype=torch.int64)
         sequences_padded = pad_sequence(text_list, batch_first=True)
+        segments_ids_padded = pad_sequence(segment_list, batch_first=True)
         pad_mask = create_padding_mask(sequences_padded)
-        return labels.to(device), sequences_padded.to(device), pad_mask.to(device)
+        return labels.to(device), sequences_padded.to(device), segments_ids_padded.to(device), pad_mask.to(device)
 
     def get_data_loader(self, iterator):
         pprint(self.text_pipeline('This is a sample sentence.'))
@@ -109,7 +116,3 @@ class DataLoaderPreprocessor:
 
     def get_valid_data_loader(self):
         return self.get_data_loader(self.split_valid_)
-
-
-if __name__ == "__main__":
-    ds = DataLoaderPreprocessor(batch_size=8, shuffle=False)
