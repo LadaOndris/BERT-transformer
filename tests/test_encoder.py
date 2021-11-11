@@ -2,8 +2,9 @@ from unittest import TestCase
 
 import numpy as np
 import torch
+from torch.nn import LayerNorm
 
-from src.transformer.modules import Dense, Embedding, LayerNormalization, MultiHeadAttention, Relu, TransformerEncoder
+from src.transformer.modules import Dense, Embedding, LayerNormalization, Relu, TransformerEncoder
 from src.transformer.operations import create_padding_mask
 
 
@@ -47,21 +48,31 @@ class TestLayerNormalization(TestCase):
 
         torch.testing.assert_allclose(output, expected_output)
 
+    def test_layer_against_torch_library(self):
+        n_features = 5
+        layer = LayerNormalization(n_features)
+        torch_layer = LayerNorm(n_features)
+        data = torch.from_numpy(np.arange(10, dtype=np.float32).reshape(-1, n_features) * 10)
+        # data = torch.tensor([[0, 0, 1, 0, 0.]])
+        expected_output = torch_layer(data)
+        output = layer(data)
 
-class TestMultiHeadAttention(TestCase):
+        torch.testing.assert_allclose(output, expected_output)
 
-    def test_forward(self):
-        mha = MultiHeadAttention(d_model=512, num_heads=8)
-        y_np = np.random.rand(*[1, 60, 512]).astype(np.float32)
-        y = torch.from_numpy(y_np)  # (batch_size, encoder_sequence, d_model)
-        out, attn = mha(y, y, y, mask=None)
-
-        expected_out_shape = [1, 60, 512]
-        # The attentions between each word pair for each head
-        expected_attn_shape = [1, 8, 60, 60]
-
-        torch.testing.assert_allclose(out.shape, expected_out_shape)
-        torch.testing.assert_allclose(attn.shape, expected_attn_shape)
+# class TestMultiHeadAttention(TestCase):
+#
+#     def test_forward(self):
+#         mha = MultiHeadAttention(d_model=512, num_heads=8)
+#         y_np = np.random.rand(*[1, 60, 512]).astype(np.float32)
+#         y = torch.from_numpy(y_np)  # (batch_size, encoder_sequence, d_model)
+#         out, attn = mha(y, y, y, mask=None)
+#
+#         expected_out_shape = [1, 60, 512]
+#         # The attentions between each word pair for each head
+#         expected_attn_shape = [1, 8, 60, 60]
+#
+#         torch.testing.assert_allclose(out.shape, expected_out_shape)
+#         torch.testing.assert_allclose(attn.shape, expected_attn_shape)
 
 
 class TestEmbedding(TestCase):

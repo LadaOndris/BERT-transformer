@@ -187,7 +187,7 @@ class LayerNormalization(nn.Module):
     Layer Normalization: https://arxiv.org/pdf/1607.06450.pdf
     """
 
-    def __init__(self, features, axis=-1, epsilon=1e-3):
+    def __init__(self, features, axis=-1, epsilon=1e-05):
         super(LayerNormalization, self).__init__()
         self.axis = axis
         self.epsilon = epsilon
@@ -202,7 +202,8 @@ class LayerNormalization(nn.Module):
         mean_dim = torch.divide(sum_dim, dim_size)  # (A, B, 1)
 
         pow_dim = torch.pow(x - mean_dim, 2)
-        var_dim = torch.divide(pow_dim, dim_size - 1)
+        pow_sum = torch.sum(pow_dim, dim=self.axis, keepdim=True)
+        var_dim = torch.divide(pow_sum, dim_size)
 
         x_normalized = torch.divide(x - mean_dim, torch.sqrt(var_dim + self.epsilon))
 
