@@ -7,17 +7,23 @@ from src.transformer.bert import BertClassifier
 
 
 def create_model(config) -> BertClassifier:
-    bert_model = torch.hub.load('huggingface/pytorch-transformers',
-                                'modelForSequenceClassification',
-                                'bert-base-uncased')
-
+    bert_model = get_bert_model()
     classifier = BertClassifier(config)
-
-    classifier.bert.embeddings.load_state_dict(bert_model.bert.embeddings.state_dict(), strict=False)
-    classifier.bert.encoder.layers.load_state_dict(bert_model.bert.encoder.layer.state_dict())
-    classifier.bert.pooler.load_state_dict(bert_model.bert.pooler.state_dict())
-
+    load_weights_from_bert(classifier, bert_model)
     return classifier
+
+
+def load_weights_from_bert(target_model: BertClassifier, source_model):
+    target_model.bert.embeddings.load_state_dict(source_model.embeddings.state_dict(), strict=False)
+    target_model.bert.encoder.layers.load_state_dict(source_model.encoder.layer.state_dict())
+    target_model.bert.pooler.load_state_dict(source_model.pooler.state_dict())
+
+
+def get_bert_model():
+    bert_model = torch.hub.load('huggingface/pytorch-transformers',
+                                'model',
+                                'bert-base-uncased')
+    return bert_model
 
 
 def get_bert_tokenizer():

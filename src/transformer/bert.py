@@ -30,9 +30,11 @@ class Bert(nn.Module):
         conf_trans = config['transformer']
         self.embeddings = BertEmbeddings(conf_trans['vocab_size'],
                                          conf_trans['dim_model'],
-                                         conf_trans['max_position_encoding'])
+                                         conf_trans['max_position_encoding'],
+                                         layer_norm_eps=conf_trans['layer_norm_eps'])
         self.encoder = TransformerEncoder(num_layers=conf_trans['num_layers'], d_model=conf_trans['dim_model'],
-                                          num_heads=conf_trans['num_heads'], d_ff=conf_trans['dim_ff'])
+                                          num_heads=conf_trans['num_heads'], d_ff=conf_trans['dim_ff'],
+                                          layer_norm_eps=conf_trans['layer_norm_eps'])
         self.pooler = BertPooler(conf_trans['dim_model'])
 
     def forward(self, x, token_type_ids):
@@ -47,12 +49,12 @@ class Bert(nn.Module):
 
 class BertEmbeddings(nn.Module):
 
-    def __init__(self, vocab_size, dim_embed, max_seq_len):
+    def __init__(self, vocab_size, dim_embed, max_seq_len, layer_norm_eps):
         super(BertEmbeddings, self).__init__()
         self.word_embeddings = Embedding(vocab_size, dim_embed)
         self.position_embeddings = Embedding(max_seq_len, dim_embed)
         self.token_type_embeddings = Embedding(2, dim_embed)
-        self.LayerNorm = LayerNormalization(dim_embed)
+        self.LayerNorm = LayerNormalization(dim_embed, epsilon=layer_norm_eps)
         self.dropout = Dropout(p=0.1)
         self.position_ids = torch.arange(max_seq_len, dtype=torch.long).unsqueeze(0)
 
@@ -62,8 +64,10 @@ class BertEmbeddings(nn.Module):
         # pos = torch.arange(seq_len, dtype=torch.long)
         pos = self.position_ids[:, :seq_len]
         pos = pos.expand_as(x)  # (1, seq_len,) -> (batch_size, seq_len)
-        embedding = self.word_embeddings(x) + self.position_embeddings(pos) + self.token_type_embeddings(seg)
-        return self.LayerNorm(embedding)
+        embeddings = self.word_embeddings(x) + self.position_embeddings(pos) + self.token_type_embeddings(seg)
+        embeddings = self.LayerNorm(embeddings)
+        embeddings = self.dropout(embeddings)
+        return embeddings
 
 
 class BertPooler(nn.Module):

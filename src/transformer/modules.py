@@ -2,18 +2,18 @@ import math
 
 import torch
 from torch import nn
-from torch.nn import Dropout
+from torch.nn import Dropout, GELU
 
 from src.transformer.operations import softmax
 
 
 class TransformerEncoder(nn.Module):
 
-    def __init__(self, num_layers: int, d_model: int, num_heads: int, d_ff: int):
+    def __init__(self, num_layers: int, d_model: int, num_heads: int, d_ff: int, layer_norm_eps: float):
         super(TransformerEncoder, self).__init__()
         self.num_layers = num_layers
 
-        self.layers = nn.ModuleList([EncoderLayer(d_model, num_heads, d_ff)
+        self.layers = nn.ModuleList([EncoderLayer(d_model, num_heads, d_ff, layer_norm_eps)
                                      for _ in range(num_layers)])
 
     def forward(self, x, mask):
@@ -40,7 +40,7 @@ class Embedding(nn.Module):
 
 class EncoderLayer(nn.Module):
 
-    def __init__(self, d_model: int, num_heads: int, d_ff: int):
+    def __init__(self, d_model: int, num_heads: int, d_ff: int, layer_norm_eps: float):
         """
 
         :param d_model:
@@ -51,9 +51,9 @@ class EncoderLayer(nn.Module):
         super(EncoderLayer, self).__init__()
         self.d_model = d_model
 
-        self.attention = BertAttention(d_model, num_heads)
+        self.attention = BertAttention(d_model, num_heads, layer_norm_eps)
         self.intermediate = BertIntermediate(d_model, d_ff)
-        self.output = BertOutput(d_ff, d_model)
+        self.output = BertOutput(d_ff, d_model, layer_norm_eps)
 
     def forward(self, x, mask):
         attention = self.attention(x, x, x, mask)  # (batch_size, seq_len, d_model)
@@ -63,17 +63,18 @@ class EncoderLayer(nn.Module):
 
 
 class BertAttention(nn.Module):
-    def __init__(self, d_model: int, num_heads: int):
+    def __init__(self, d_model: int, num_heads: int, layer_norm_eps: float):
         super(BertAttention, self).__init__()
 
         self.self = BertSelfAttention(d_model, num_heads)
-        self.output = BertOutput(d_model, d_model)
+        self.output = BertOutput(d_model, d_model, layer_norm_eps)
 
     def forward(self, query, key, value, mask):
         residual = query
         scaled_attention = self.self(query, key, value, mask)
-        output =  self.output(scaled_attention, residual)
+        output = self.output(scaled_attention, residual)
         return output
+
 
 class BertSelfAttention(nn.Module):
 
@@ -107,7 +108,7 @@ class BertSelfAttention(nn.Module):
         # 'Concatenation'
         scaled_attention = scaled_attention.view(n_batches, -1, self.d_model)  # (batch_size, seq_len, d_model)
 
-        return scaled_attention
+        return self.dropout(scaled_attention)
 
     def sdpa(self, queries, keys, values, mask):
         """
@@ -140,15 +141,18 @@ class BertSelfAttention(nn.Module):
 
 class BertOutput(nn.Module):
 
-    def __init__(self, in_features: int, out_features: int):
+    def __init__(self, in_features: int, out_features: int, layer_norm_eps: float):
         super(BertOutput, self).__init__()
 
         self.dense = Dense(in_features, out_features)
-        self.LayerNorm = LayerNormalization(out_features)
+        self.LayerNorm = LayerNormalization(out_features, epsilon=layer_norm_eps)
         self.dropout = Dropout(p=0.1)
 
     def forward(self, x, residual):
-        return self.LayerNorm(residual + self.dense(x))
+        x = self.dense(x)
+        x = self.dropout(x)
+        x = self.LayerNorm(residual + x)
+        return x
 
 
 class BertIntermediate(nn.Module):
@@ -157,7 +161,7 @@ class BertIntermediate(nn.Module):
         super(BertIntermediate, self).__init__()
 
         self.dense = Dense(d_model, d_ff)
-        self.activation = Relu()
+        self.activation = GELU()
 
     def forward(self, x):
         out1 = self.dense(x)  # (batch_size, seq_len, d_ff)
