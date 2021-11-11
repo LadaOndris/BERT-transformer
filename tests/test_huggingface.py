@@ -32,4 +32,4 @@ class Test(TestCase):
         pooler_output = huggingface_output.pooler_output
         output = self.model.bert(input_ids, type_ids)
 
-        torch.testing.assert_allclose(output, pooler_output, atol=1e-4)
+        torch.testing.assert_allclose(output, pooler_output, atol=1e-4, rtol=1e-4)
