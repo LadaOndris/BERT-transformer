@@ -3,7 +3,7 @@ from unittest import TestCase
 
 import torch
 
-from src.training.huggingface import get_bert_model, get_bert_tokenizer, load_weights_from_bert
+from src.transformer.huggingface import get_bert_model, get_bert_tokenizer, load_weights_from_bert
 from src.transformer.bert import BertClassifier
 
 

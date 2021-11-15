@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 import time
@@ -5,8 +6,8 @@ import time
 import torch
 from torchinfo import summary
 
-from src.training.data_loader import DataLoaderPreprocessor
-from src.training.huggingface import create_model, get_bert_tokenizer
+from src.data.loader import DataLoaderPreprocessor
+from src.transformer.huggingface import create_model, get_bert_tokenizer
 from src.training.losses import SingleGPULossCompute
 
 
@@ -48,8 +49,6 @@ def train(model: torch.nn.Module, num_epochs, train_iter, valid_iter, save_dir):
     lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=config['train']['lr_decay'])
 
     for epoch in range(num_epochs):
-        torch.save(model.state_dict(), get_save_path(save_dir, epoch))
-
         model.train()
         train_acc = run_epoch(train_iter, model, SingleGPULossCompute(model, criterion, optimizer))
         model.eval()
@@ -71,22 +70,34 @@ def get_save_path(save_dir, epoch_num):
 
 
 if __name__ == '__main__':
-    with open('./src/config.json', 'r') as config_file:
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', type=str, action='store', default='./src/config.json',
+                        help='a config file name')
+    parser.add_argument('--verbose', type=int, action='store', default=0,
+                        help='verbose training output')
+    parser.add_argument('--batch-size', type=int, action='store', default=32,
+                        help='the number of samples in a batch')
+    args = parser.parse_args()
+
+    with open(args.config, 'r') as config_file:
         config = json.load(config_file)
 
-    data_preprocessor = DataLoaderPreprocessor(batch_size=config['train']['batch_size'],
+    bert_classifier = create_model(config)
+    summary(bert_classifier)
+
+    data_preprocessor = DataLoaderPreprocessor(batch_size=args.batch_size,
                                                shuffle=True,
                                                tokenizer=get_bert_tokenizer())
-    bert_classifier = create_model(config)
-
-    summary(bert_classifier)
     train_dataloader = data_preprocessor.get_train_data_loader()
     valid_dataloader = data_preprocessor.get_valid_data_loader()
     test_dataloader = data_preprocessor.get_test_data_loader()
 
-    save_dir = 'models'
+    save_dir = config['train']['save_weights_dir']
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
-    train(bert_classifier, config['train']['epochs'], train_iter=train_dataloader, valid_iter=valid_dataloader,
+    train(bert_classifier,
+          num_epochs=config['train']['epochs'],
+          train_iter=train_dataloader,
+          valid_iter=valid_dataloader,
           save_dir=save_dir)

@@ -2,7 +2,7 @@ import json
 
 import torch
 
-from src.training.data_loader import DataLoaderPreprocessor
+from src.data.loader import DataLoaderPreprocessor
 from src.transformer.bert import BertClassifier
 
 
