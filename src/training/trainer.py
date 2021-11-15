@@ -7,11 +7,14 @@ import torch
 from torchinfo import summary
 
 from src.data.loader import DataLoaderPreprocessor
-from src.transformer.huggingface import create_model, get_bert_tokenizer
 from src.training.losses import SingleGPULossCompute
+from src.transformer.huggingface import create_model, get_bert_tokenizer
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def run_epoch(data_iter, model: torch.nn.Module, loss_compute, log_interval=50, verbose=False):
+    model = model.to(device)
     total_loss = 0
     step_acc = 0
     step_count = 0
@@ -20,6 +23,11 @@ def run_epoch(data_iter, model: torch.nn.Module, loss_compute, log_interval=50, 
 
     for batch_idx, batch in enumerate(data_iter):
         labels, input_ids, token_type_ids, pad_masks = batch
+        labels = labels.to(device)
+        input_ids = input_ids.to(device)
+        token_type_ids = token_type_ids.to(device)
+        pad_masks = pad_masks.to(device)
+
         batch_size = input_ids.size(0)
 
         predicted_labels = model.forward(input_ids, token_type_ids)
@@ -41,7 +49,7 @@ def run_epoch(data_iter, model: torch.nn.Module, loss_compute, log_interval=50, 
     return epoch_acc
 
 
-def train(model: torch.nn.Module, num_epochs, train_iter, valid_iter, save_dir):
+def train(model: torch.nn.Module, num_epochs, train_iter, valid_iter, save_dir, verbose):
     criterion = torch.nn.CrossEntropyLoss()
 
     epoch_start_time = time.time()
@@ -50,9 +58,9 @@ def train(model: torch.nn.Module, num_epochs, train_iter, valid_iter, save_dir):
 
     for epoch in range(num_epochs):
         model.train()
-        train_acc = run_epoch(train_iter, model, SingleGPULossCompute(model, criterion, optimizer))
+        train_acc = run_epoch(train_iter, model, SingleGPULossCompute(model, criterion, optimizer), verbose)
         model.eval()
-        valid_acc = run_epoch(valid_iter, model, SingleGPULossCompute(model, criterion))
+        valid_acc = run_epoch(valid_iter, model, SingleGPULossCompute(model, criterion), verbose)
 
         print('-' * 59)
         print('| end of epoch {:3d} | time: {:5.2f}s | '
@@ -100,4 +108,5 @@ if __name__ == '__main__':
           num_epochs=config['train']['epochs'],
           train_iter=train_dataloader,
           valid_iter=valid_dataloader,
-          save_dir=save_dir)
+          save_dir=save_dir,
+          verbose=args.verbose)

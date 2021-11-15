@@ -12,8 +12,6 @@ from torchtext.vocab import build_vocab_from_iterator
 
 from src.transformer.operations import create_padding_mask
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 class BucketSampler(Sampler[int]):
     """
@@ -95,7 +93,7 @@ class DataLoaderPreprocessor:
         sequences_padded = pad_sequence(text_list, batch_first=True)
         segments_ids_padded = pad_sequence(segment_list, batch_first=True)
         pad_mask = create_padding_mask(sequences_padded)
-        return labels.to(device), sequences_padded.to(device), segments_ids_padded.to(device), pad_mask.to(device)
+        return labels, sequences_padded, segments_ids_padded, pad_mask
 
     def get_data_loader(self, iterator):
         # pprint(self.text_pipeline('This is a sample sentence.'))
