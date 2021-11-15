@@ -20,6 +20,6 @@
     "num_classes": 4
   },
   "test": {
-    "weights": ""
+    "saved_weights_path": "models/model_0.weights"
   }
 }
