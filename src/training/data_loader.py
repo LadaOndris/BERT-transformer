@@ -1,5 +1,4 @@
 import random
-from pprint import pprint
 from typing import Collection, Iterator
 
 import torch
@@ -99,8 +98,7 @@ class DataLoaderPreprocessor:
         return labels.to(device), sequences_padded.to(device), segments_ids_padded.to(device), pad_mask.to(device)
 
     def get_data_loader(self, iterator):
-        pprint(self.text_pipeline('This is a sample sentence.'))
-
+        # pprint(self.text_pipeline('This is a sample sentence.'))
         batch_sampler = BucketSampler(data_source=iterator,
                                       batch_size=self.batch_size,
                                       tokenizer=self.tokenizer)
