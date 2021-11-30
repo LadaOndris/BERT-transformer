@@ -94,10 +94,12 @@ class TestTransformerEncoder(TestCase):
         batch_size = 32
         seq_len = 80
         d_model = 512
-        encoder = TransformerEncoder(num_layers=1, d_model=d_model, num_heads=4, d_ff=128,
-                                     input_vocab_size=5000, max_position_encoding=10000)
-        input = torch.from_numpy(np.random.uniform(0, 5000, size=(batch_size, seq_len)).astype(np.int64))
-        mask = create_padding_mask(input)
+        # Transformer encoder expects words in embeddings
+        encoder = TransformerEncoder(num_layers=1, d_model=d_model, num_heads=4, d_ff=128, layer_norm_eps=1e-12)
+        input = torch.from_numpy(np.random.uniform(0, 5000, size=(batch_size, seq_len, d_model)).astype(np.float32))
+        # Mask doesn't matter
+        mask = create_padding_mask(input[:, :, 0])
+
         output = encoder(input, mask)
 
         torch.testing.assert_equal(output.shape, [batch_size, seq_len, d_model])

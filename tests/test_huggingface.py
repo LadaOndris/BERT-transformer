@@ -10,7 +10,7 @@ from src.transformer.bert import BertClassifier
 class Test(TestCase):
 
     def setUp(self):
-        with open('./src/config.json', 'r') as config_file:
+        with open('src/config.json', 'r') as config_file:
             config = json.load(config_file)
 
         self.model = BertClassifier(config)
