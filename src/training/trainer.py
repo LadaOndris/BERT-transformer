@@ -13,7 +13,8 @@ from src.transformer.huggingface import create_model, get_bert_tokenizer
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def run_epoch(data_iter, model: torch.nn.Module, loss_compute, log_interval=50, verbose=False):
+def run_epoch(data_iter, model: torch.nn.Module, loss_compute, verbose: bool, log_interval=500, save_model=False,
+              epoch=-1):
     model = model.to(device)
     total_loss = 0
     step_acc = 0
@@ -43,6 +44,8 @@ def run_epoch(data_iter, model: torch.nn.Module, loss_compute, log_interval=50, 
             print("Epoch step: {:5d}/{:5d} Loss: {:5.3f} Accuracy: {:8.3f}".format(
                 batch_idx + 1, int(len(data_iter) / batch_size), loss / batch_size, step_acc / step_count))
             step_acc, step_count, tokens = 0, 0, 0
+            if save_model:
+                torch.save(model.state_dict(), get_save_path(save_dir, epoch, batch_idx))
 
     epoch_acc = epoch_total_acc / epoch_batches
 
@@ -58,7 +61,8 @@ def train(model: torch.nn.Module, num_epochs, train_iter, valid_iter, save_dir, 
 
     for epoch in range(num_epochs):
         model.train()
-        train_acc = run_epoch(train_iter, model, SingleGPULossCompute(model, criterion, optimizer), verbose)
+        train_acc = run_epoch(train_iter, model, SingleGPULossCompute(model, criterion, optimizer), verbose,
+                              save_model=True, epoch=epoch)
         model.eval()
         valid_acc = run_epoch(valid_iter, model, SingleGPULossCompute(model, criterion), verbose)
 
@@ -70,11 +74,11 @@ def train(model: torch.nn.Module, num_epochs, train_iter, valid_iter, save_dir, 
         epoch_start_time = time.time()
         lr_scheduler.step()
 
-        torch.save(model.state_dict(), get_save_path(save_dir, epoch))
+        # torch.save(model.state_dict(), get_save_path(save_dir, epoch))
 
 
-def get_save_path(save_dir, epoch_num):
-    return os.path.join(save_dir, F"model_{epoch_num}.weights")
+def get_save_path(save_dir, epoch_num, batch_num):
+    return os.path.join(save_dir, F"model_{epoch_num}_{batch_num}.weights")
 
 
 if __name__ == '__main__':
@@ -109,4 +113,4 @@ if __name__ == '__main__':
           train_iter=train_dataloader,
           valid_iter=valid_dataloader,
           save_dir=save_dir,
-          verbose=args.verbose)
+          verbose=bool(args.verbose))
