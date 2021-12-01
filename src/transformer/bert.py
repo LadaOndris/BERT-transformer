@@ -56,7 +56,8 @@ class BertEmbeddings(nn.Module):
         self.token_type_embeddings = Embedding(2, dim_embed)
         self.LayerNorm = LayerNormalization(dim_embed, epsilon=layer_norm_eps)
         self.dropout = Dropout(p=0.1)
-        self.position_ids = torch.nn.Parameter(torch.arange(max_seq_len, dtype=torch.long).unsqueeze(0))
+        position_ids = torch.arange(max_seq_len, dtype=torch.long).unsqueeze(0)
+        self.register_buffer('position_ids', position_ids)
 
     def forward(self, x, seg):
         # x = (batch_size, seq_len)
