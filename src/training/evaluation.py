@@ -14,7 +14,7 @@ def evaluate(model, data_iterator, verbose):
     start_time = time.time()
 
     dummy_loss = torch.nn.CrossEntropyLoss()
-    accuracy = run_epoch(data_iterator, model, dummy_loss, verbose=verbose)
+    accuracy = run_epoch(data_iterator, model, dummy_loss, verbose=verbose, log_interval=50)
 
     print('-' * 59)
     print('| time: {:5.2f}s | test accuracy {:8.3f} |'
@@ -36,7 +36,7 @@ if __name__ == '__main__':
         config = json.load(config_file)
 
     bert_classifier = create_model(config)
-    bert_classifier.load_state_dict(torch.load(config['test']['saved_weights_path']))
+    bert_classifier.load_state_dict(torch.load(config['test']['saved_weights_path'], map_location=torch.device('cpu')))
     summary(bert_classifier)
 
     data_preprocessor = DataLoaderPreprocessor(batch_size=args.batch_size,

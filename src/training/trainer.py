@@ -20,7 +20,7 @@ def run_epoch(data_iter, model: torch.nn.Module, loss_compute, verbose: bool, lo
     step_acc = 0
     step_count = 0
     epoch_total_acc = 0
-    epoch_batches = 0
+    epoch_count = 0
 
     for batch_idx, batch in enumerate(data_iter):
         labels, input_ids, token_type_ids, pad_masks = batch
@@ -37,8 +37,8 @@ def run_epoch(data_iter, model: torch.nn.Module, loss_compute, verbose: bool, lo
         acc = torch.sum(predicted_labels.argmax(1) == labels).item()
         step_acc += acc
         step_count += batch_size
-        epoch_batches += 1
         epoch_total_acc += acc
+        epoch_count += batch_size
 
         if verbose and batch_idx % log_interval == 0:
             print("Epoch step: {:5d}/{:5d} Loss: {:5.3f} Accuracy: {:8.3f}".format(
@@ -47,7 +47,7 @@ def run_epoch(data_iter, model: torch.nn.Module, loss_compute, verbose: bool, lo
             if save_model:
                 torch.save(model.state_dict(), get_save_path(save_dir, epoch, batch_idx))
 
-    epoch_acc = epoch_total_acc / epoch_batches
+    epoch_acc = epoch_total_acc / epoch_count
 
     return epoch_acc
 
@@ -61,8 +61,7 @@ def train(model: torch.nn.Module, num_epochs, train_iter, valid_iter, save_dir, 
 
     for epoch in range(num_epochs):
         model.train()
-        train_acc = run_epoch(train_iter, model, SingleGPULossCompute(model, criterion, optimizer), verbose,
-                              save_model=True, epoch=epoch)
+        train_acc = run_epoch(train_iter, model, SingleGPULossCompute(model, criterion, optimizer), verbose)
         model.eval()
         valid_acc = run_epoch(valid_iter, model, SingleGPULossCompute(model, criterion), verbose)
 
@@ -74,7 +73,7 @@ def train(model: torch.nn.Module, num_epochs, train_iter, valid_iter, save_dir, 
         epoch_start_time = time.time()
         lr_scheduler.step()
 
-        # torch.save(model.state_dict(), get_save_path(save_dir, epoch))
+        torch.save(model.state_dict(), get_save_path(save_dir, epoch, 'end'))
 
 
 def get_save_path(save_dir, epoch_num, batch_num):
