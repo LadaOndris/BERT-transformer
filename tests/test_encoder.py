@@ -59,22 +59,6 @@ class TestLayerNormalization(TestCase):
 
         torch.testing.assert_allclose(output, expected_output)
 
-# class TestMultiHeadAttention(TestCase):
-#
-#     def test_forward(self):
-#         mha = MultiHeadAttention(d_model=512, num_heads=8)
-#         y_np = np.random.rand(*[1, 60, 512]).astype(np.float32)
-#         y = torch.from_numpy(y_np)  # (batch_size, encoder_sequence, d_model)
-#         out, attn = mha(y, y, y, mask=None)
-#
-#         expected_out_shape = [1, 60, 512]
-#         # The attentions between each word pair for each head
-#         expected_attn_shape = [1, 8, 60, 60]
-#
-#         torch.testing.assert_allclose(out.shape, expected_out_shape)
-#         torch.testing.assert_allclose(attn.shape, expected_attn_shape)
-
-
 class TestEmbedding(TestCase):
 
     def test_forward(self):

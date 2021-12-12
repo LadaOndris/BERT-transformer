@@ -65,12 +65,16 @@ def test_forward_pass(model: torch.nn.Module, data_loader):
 
 
 if __name__ == '__main__':
-    with open('./src/config.json', 'r') as config_file:
+    with open('src/config.json', 'r') as config_file:
         config = json.load(config_file)
 
-    data_preprocessor = DataLoaderPreprocessor(batch_size=config['train']['batch_size'],
+    bert_tokenizer = get_bert_tokenizer()
+    # out = bert_tokenizer('The computer age is just beginning.')
+    # print(out)
+
+    data_preprocessor = DataLoaderPreprocessor(batch_size=8,
                                                shuffle=True,
-                                               tokenizer=get_bert_tokenizer())
+                                               tokenizer=bert_tokenizer)
     transformer_classifier = create_model(config)
 
     train_dataloader = data_preprocessor.get_train_data_loader()

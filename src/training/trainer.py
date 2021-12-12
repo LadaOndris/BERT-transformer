@@ -82,7 +82,7 @@ def get_save_path(save_dir, epoch_num, batch_num):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, action='store', default='./src/config.json',
+    parser.add_argument('--config', type=str, action='store', default='src/config.json',
                         help='a config file name')
     parser.add_argument('--verbose', type=int, action='store', default=0,
                         help='verbose training output')
