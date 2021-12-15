@@ -13,8 +13,10 @@ from src.transformer.huggingface import create_model, get_bert_tokenizer
 def evaluate(model, data_iterator, verbose):
     start_time = time.time()
 
-    dummy_loss = torch.nn.CrossEntropyLoss()
-    accuracy = run_epoch(data_iterator, model, dummy_loss, verbose=verbose, log_interval=50)
+    with torch.no_grad():
+        dummy_loss = torch.nn.CrossEntropyLoss()
+        accuracy, conf_matrix = run_epoch(data_iterator, model, dummy_loss, verbose=verbose, log_interval=10,
+                                          return_confusion_matrix=True)
 
     print('-' * 59)
     print('| time: {:5.2f}s | test accuracy {:8.3f} |'
@@ -26,9 +28,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, action='store', default='src/config.json',
                         help='a config file name')
-    parser.add_argument('--verbose', type=int, action='store', default=0,
+    parser.add_argument('--verbose', type=int, action='store', default=1,
                         help='verbose training output')
-    parser.add_argument('--batch-size', type=int, action='store', default=32,
+    parser.add_argument('--batch-size', type=int, action='store', default=8,
                         help='the number of samples in a batch')
     args = parser.parse_args()
 

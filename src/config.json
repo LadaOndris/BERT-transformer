@@ -18,6 +18,6 @@
     "num_classes": 4
   },
   "test": {
-    "saved_weights_path": "models/model_3_2000.weights"
+    "saved_weights_path": "models/model_8_end.weights"
   }
 }

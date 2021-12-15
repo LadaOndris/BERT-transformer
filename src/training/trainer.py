@@ -14,13 +14,14 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def run_epoch(data_iter, model: torch.nn.Module, loss_compute, verbose: bool, log_interval=500, save_model=False,
-              epoch=-1):
+              epoch=-1, return_confusion_matrix=False):
     model = model.to(device)
     total_loss = 0
     step_acc = 0
     step_count = 0
     epoch_total_acc = 0
     epoch_count = 0
+    confusion_matrix = torch.zeros(4, 4)
 
     for batch_idx, batch in enumerate(data_iter):
         labels, input_ids, token_type_ids, pad_masks = batch
@@ -31,14 +32,19 @@ def run_epoch(data_iter, model: torch.nn.Module, loss_compute, verbose: bool, lo
 
         batch_size = input_ids.size(0)
 
-        predicted_labels = model.forward(input_ids, token_type_ids)
-        loss = loss_compute(predicted_labels, labels)
+        predicted_logits = model.forward(input_ids, token_type_ids)
+        loss = loss_compute(predicted_logits, labels)
         total_loss += loss
-        acc = torch.sum(predicted_labels.argmax(1) == labels).item()
+        pred_labels = predicted_logits.argmax(1)
+        acc = torch.sum(pred_labels == labels).item()
         step_acc += acc
         step_count += batch_size
         epoch_total_acc += acc
         epoch_count += batch_size
+
+        if return_confusion_matrix:
+            for t, p in zip(labels, pred_labels):
+                confusion_matrix[t.long(), p.long()] += 1
 
         if verbose and batch_idx % log_interval == 0:
             print("Epoch step: {:5d}/{:5d} Loss: {:5.3f} Accuracy: {:8.3f}".format(
@@ -49,7 +55,11 @@ def run_epoch(data_iter, model: torch.nn.Module, loss_compute, verbose: bool, lo
 
     epoch_acc = epoch_total_acc / epoch_count
 
-    return epoch_acc
+    if return_confusion_matrix:
+        confusion_matrix /= epoch_count
+        return epoch_acc, confusion_matrix
+    else:
+        return epoch_acc
 
 
 def train(model: torch.nn.Module, num_epochs, train_iter, valid_iter, save_dir, verbose):
@@ -61,9 +71,10 @@ def train(model: torch.nn.Module, num_epochs, train_iter, valid_iter, save_dir, 
 
     for epoch in range(num_epochs):
         model.train()
-        train_acc = run_epoch(train_iter, model, SingleGPULossCompute(model, criterion, optimizer), verbose)
+        train_acc = run_epoch(train_iter, model, SingleGPULossCompute(model, criterion, optimizer), verbose,
+                              log_interval=10)
         model.eval()
-        valid_acc = run_epoch(valid_iter, model, SingleGPULossCompute(model, criterion), verbose)
+        valid_acc = run_epoch(valid_iter, model, SingleGPULossCompute(model, criterion), verbose, log_interval=10)
 
         print('-' * 59)
         print('| end of epoch {:3d} | time: {:5.2f}s | '
@@ -86,7 +97,7 @@ if __name__ == '__main__':
                         help='a config file name')
     parser.add_argument('--verbose', type=int, action='store', default=0,
                         help='verbose training output')
-    parser.add_argument('--batch-size', type=int, action='store', default=32,
+    parser.add_argument('--batch-size', type=int, action='store', default=8,
                         help='the number of samples in a batch')
     args = parser.parse_args()
 
